@@ -70,7 +70,6 @@ class _MapScreenState extends State<MapScreen> {
       _polygons.add(
         Polygon(
           points: _points,
-          isFilled: true,
           color: Colors.deepPurple.withOpacity(0.25),
           borderColor: Colors.deepPurple,
           borderStrokeWidth: 2,
