@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package.google_maps_flutter/google_maps_flutter.dart';
-import 'package.file_saver/file_saver.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:file_saver/file_saver.dart';
 import 'package:intl/intl.dart';
 
 void main() {
