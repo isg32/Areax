@@ -1,11 +1,10 @@
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:file_saver/file_saver.dart';
 import 'package:intl/intl.dart';
-import 'package:http/http.dart' as http;
+import 'package:geolocator/geolocator.dart';
 
 void main() {
   runApp(const AreaxApp());
@@ -93,31 +92,69 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  // New function to locate by IP
-  Future<void> _locateByIp() async {
-    try {
-      final response = await http.get(Uri.parse('http://ip-api.com/json'));
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final lat = data['lat'];
-        final lon = data['lon'];
-        if (lat != null && lon != null) {
-          _mapController.move(LatLng(lat, lon), 14.0);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Located by IP address!')),
-          );
-        } else {
-          _showErrorSnackBar('Could not find location data from IP.');
-        }
-      } else {
-        _showErrorSnackBar('Failed to get location data from API.');
+  // New function to undo the last dropped point
+  void _undoLastPoint() {
+    setState(() {
+      if (_points.isNotEmpty) {
+        _points.removeLast();
+        _markers.removeLast();
+        _updatePolygon();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Undo last point.')),
+        );
       }
+    });
+  }
+
+  Future<void> _locateUser() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      _showErrorSnackBar('Location services are disabled.');
+      return;
+    }
+
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        _showErrorSnackBar('Location permissions are denied.');
+        return;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      _showErrorSnackBar(
+          'Location permissions are permanently denied, we cannot request permissions.');
+      return;
+    }
+
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      final LatLng latlng = LatLng(position.latitude, position.longitude);
+      _mapController.move(latlng, 14.0);
+
+      // Create a dummy TapPosition with the current location's LatLng
+      final tapPosition = TapPosition(Offset(0, 0), Offset(0, 0));
+
+      // Call _onMapTapped with the dummy TapPosition and the LatLng
+      _onMapTapped(tapPosition, latlng);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Located and added your current position.')),
+      );
     } catch (e) {
-      _showErrorSnackBar('Error locating by IP: $e');
+      _showErrorSnackBar('Error locating user: $e');
     }
   }
 
-  Future<void> _saveJson() async {
+  // New function to show JSON in a pop-up
+  Future<void> _showJsonPopup() async {
     if (_nameController.text.isEmpty || _idController.text.isEmpty) {
       _showErrorSnackBar('Name and ID fields cannot be empty.');
       return;
@@ -129,9 +166,6 @@ class _MapScreenState extends State<MapScreen> {
 
     final String name = _nameController.text;
     final String id = _idController.text;
-    final String formattedDate =
-        DateFormat('yyyy-MM-dd_HH-mm-ss').format(DateTime.now());
-
     final Map<String, dynamic> jsonData = {
       'name': name,
       'id': id,
@@ -142,22 +176,32 @@ class _MapScreenState extends State<MapScreen> {
 
     final String jsonString =
         const JsonEncoder.withIndent('  ').convert(jsonData);
-    final Uint8List fileData = Uint8List.fromList(utf8.encode(jsonString));
-    final String fileName = '$name-property-evaluatedat_$formattedDate.json';
 
-    try {
-      await FileSaver.instance.saveFile(
-        name: fileName,
-        bytes: fileData,
-        fileExtension: 'json',
-        mimeType: MimeType.text,
-      );
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Successfully saved $fileName')),
-      );
-    } catch (e) {
-      _showErrorSnackBar('Error saving file: $e');
-    }
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Generated JSON'),
+        content: SingleChildScrollView(
+          child: SelectableText(jsonString),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: jsonString));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('JSON copied to clipboard!')),
+              );
+              Navigator.of(context).pop();
+            },
+            child: const Text('Copy and Close'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showErrorSnackBar(String message) {
@@ -201,7 +245,8 @@ class _MapScreenState extends State<MapScreen> {
             child: Card(
               elevation: 8.0,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16)),
+                borderRadius: BorderRadius.circular(16),
+              ),
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
@@ -224,7 +269,30 @@ class _MapScreenState extends State<MapScreen> {
                         prefixIcon: Icon(Icons.pin_rounded),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        FilledButton.icon(
+                          onPressed: _undoLastPoint,
+                          icon: const Icon(Icons.undo_rounded),
+                          label: const Text('Undo'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.grey.shade600,
+                          ),
+                        ),
+                        FilledButton.icon(
+                          onPressed: _locateUser,
+                          label: const Icon(Icons.my_location_rounded,
+                              color: Colors.white),
+                          style: FilledButton.styleFrom(
+                            backgroundColor:
+                                Theme.of(context).colorScheme.tertiary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -237,9 +305,9 @@ class _MapScreenState extends State<MapScreen> {
                           ),
                         ),
                         FilledButton.icon(
-                          onPressed: _saveJson,
-                          icon: const Icon(Icons.save_alt_rounded),
-                          label: const Text('Save Area'),
+                          onPressed: _showJsonPopup,
+                          icon: const Icon(Icons.code_rounded),
+                          label: const Text('Show JSON'),
                         ),
                       ],
                     ),
@@ -250,14 +318,6 @@ class _MapScreenState extends State<MapScreen> {
           ),
         ],
       ),
-      // This is the new floating action button
-      floatingActionButton: FloatingActionButton(
-        onPressed: _locateByIp,
-        tooltip: 'Locate by IP',
-        backgroundColor: Theme.of(context).colorScheme.tertiary,
-        child: const Icon(Icons.my_location_rounded, color: Colors.white),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
     );
   }
 }
