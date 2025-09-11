@@ -232,7 +232,7 @@ class _MapScreenState extends State<MapScreen> {
             children: [
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.example.areax',
+                userAgentPackageName: 'com.isg32.areax',
               ),
               PolygonLayer(polygons: _polygons),
               MarkerLayer(markers: _markers),
