@@ -1,6 +1,6 @@
 {
-    "name": "areax",
-    "short_name": "areax",
+    "name": "material3_counter",
+    "short_name": "material3_counter",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
