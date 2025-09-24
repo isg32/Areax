@@ -211,6 +211,7 @@ class _MapScreenState extends State<MapScreen> {
         .map((p) => {'lat': p.latitude, 'lng': p.longitude})
         .toList();
 
+    // The API URL and JSON payload have been updated here
     final body = jsonEncode({
       'id': id,
       'coordinates': coordinates,
@@ -218,7 +219,7 @@ class _MapScreenState extends State<MapScreen> {
 
     try {
       final response = await http.post(
-        Uri.parse("https://areax-bridge.vercel.app/update-coordinates"),
+        Uri.parse("https://areax-bridge.vercel.app/update_coordinates"), // Updated URL
         headers: {"Content-Type": "application/json"},
         body: body,
       );
@@ -328,27 +329,30 @@ class _MapScreenState extends State<MapScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         FilledButton.icon(
-                          onPressed: _clearAll,
-                          icon: const Icon(Icons.delete_sweep_rounded),
-                          label: const Text('Clear'),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: Colors.amber.shade700,
-                          ),
-                        ),
-                        FilledButton.icon(
                           onPressed: _showJsonPopup,
                           icon: const Icon(Icons.code_rounded),
                           label: const Text('Show JSON'),
                         ),
+                        FilledButton.icon(
+                          onPressed: _sendToDatabase,
+                          icon: const Icon(Icons.cloud_upload_rounded),
+                          label: const Text('Send to DB'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.green.shade600,
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 8),
-                    FilledButton.icon(
-                      onPressed: _sendToDatabase,
-                      icon: const Icon(Icons.cloud_upload_rounded),
-                      label: const Text('Send to DB'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.green.shade600,
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: _clearAll,
+                        icon: const Icon(Icons.delete_sweep_rounded),
+                        label: const Text('Clear'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.amber.shade700,
+                        ),
                       ),
                     ),
                   ],
