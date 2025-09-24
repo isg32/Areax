@@ -5,6 +5,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 
 void main() {
   runApp(const AreaxApp());
@@ -92,7 +93,6 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  // New function to undo the last dropped point
   void _undoLastPoint() {
     setState(() {
       if (_points.isNotEmpty) {
@@ -138,10 +138,7 @@ class _MapScreenState extends State<MapScreen> {
       final LatLng latlng = LatLng(position.latitude, position.longitude);
       _mapController.move(latlng, 14.0);
 
-      // Create a dummy TapPosition with the current location's LatLng
-      final tapPosition = TapPosition(Offset(0, 0), Offset(0, 0));
-
-      // Call _onMapTapped with the dummy TapPosition and the LatLng
+      final tapPosition = TapPosition(Offset.zero, Offset.zero);
       _onMapTapped(tapPosition, latlng);
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -153,7 +150,6 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  // New function to show JSON in a pop-up
   Future<void> _showJsonPopup() async {
     if (_nameController.text.isEmpty || _idController.text.isEmpty) {
       _showErrorSnackBar('Name and ID fields cannot be empty.');
@@ -202,6 +198,41 @@ class _MapScreenState extends State<MapScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _sendToDatabase() async {
+    if (_idController.text.isEmpty || _points.length < 3) {
+      _showErrorSnackBar('ID and at least 3 points are required.');
+      return;
+    }
+
+    final String id = _idController.text;
+    final coordinates = _points
+        .map((p) => {'lat': p.latitude, 'lng': p.longitude})
+        .toList();
+
+    final body = jsonEncode({
+      'id': id,
+      'coordinates': coordinates,
+    });
+
+    try {
+      final response = await http.post(
+        Uri.parse("https://areax-bridge.vercel.app/update-coordinates"),
+        headers: {"Content-Type": "application/json"},
+        body: body,
+      );
+
+      if (response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("✅ Coordinates updated in DB")),
+        );
+      } else {
+        _showErrorSnackBar("Failed: ${response.body}");
+      }
+    } catch (e) {
+      _showErrorSnackBar("Error: $e");
+    }
   }
 
   void _showErrorSnackBar(String message) {
@@ -310,6 +341,15 @@ class _MapScreenState extends State<MapScreen> {
                           label: const Text('Show JSON'),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 8),
+                    FilledButton.icon(
+                      onPressed: _sendToDatabase,
+                      icon: const Icon(Icons.cloud_upload_rounded),
+                      label: const Text('Send to DB'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.green.shade600,
+                      ),
                     ),
                   ],
                 ),
