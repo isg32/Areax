@@ -2,7 +2,7 @@ name: areax
 description: Areax - A Basic PropertyEvaluator App Made by Sapan Gajjar for SIH2025, written in Flutter - uses OpenStreetMap Api to function.
 publish_to: 'none'
 
-version: 1.2.0+1
+version: 1.2.2+1
 
 environment:
   sdk: ^3.0.0
