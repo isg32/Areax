@@ -6,20 +6,91 @@ import 'package:latlong2/latlong.dart';
 import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(const AreaxApp());
 }
 
+// --- CONSTANTS AND COLOR SCHEME ---
 const Color kPrimaryColor = Color(0xFF96A78D); // Primary: Greenish-Grey
 const Color kErrorColor = Color(0xFFED3F27); // Error/Danger: Bright Red
 const Color kSecondaryColor = Color(0xFFD9E9CF); // Secondary: Light Mint/Cream
 const Color kBackgroundColor = Color(0xFFF0F0F0); // Background: Light Grey
 
 const String kApiUrl = "https://areax-bridge.vercel.app";
+const String kAuthTokenKey = 'auth_token';
+const String kAuthUserNameKey = 'auth_username';
 
-class AreaxApp extends StatelessWidget {
+// --- AUTHENTICATION SERVICE ---
+class AuthService extends ChangeNotifier {
+  String? _authToken;
+  String? _userName;
+  bool _isLoading = true;
+
+  String? get authToken => _authToken;
+  String? get userName => _userName;
+  bool get isAuthenticated => _authToken != null;
+  bool get isLoading => _isLoading;
+
+  AuthService() {
+    _loadAuthToken();
+  }
+
+  Future<void> _loadAuthToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    _authToken = prefs.getString(kAuthTokenKey);
+    _userName = prefs.getString(kAuthUserNameKey);
+    _isLoading = false;
+    notifyListeners();
+  }
+
+  Future<bool> login(String user, String key) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$kApiUrl/authenticate'), 
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'user': user, 'key': key}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['authenticated'] == true) {
+          final token = data['token'] ?? 'mock_token_${user}'; 
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString(kAuthTokenKey, token);
+          await prefs.setString(kAuthUserNameKey, user);
+          _authToken = token;
+          _userName = user;
+          notifyListeners();
+          return true;
+        }
+      }
+    } catch (e) {
+      // Handle network/parsing error
+    }
+    return false;
+  }
+
+  Future<void> logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(kAuthTokenKey);
+    await prefs.remove(kAuthUserNameKey);
+    _authToken = null;
+    _userName = null;
+    notifyListeners();
+  }
+}
+
+class AreaxApp extends StatefulWidget {
   const AreaxApp({super.key});
+
+  @override
+  State<AreaxApp> createState() => _AreaxAppState();
+}
+
+class _AreaxAppState extends State<AreaxApp> {
+  final AuthService _authService = AuthService();
 
   @override
   Widget build(BuildContext context) {
@@ -32,10 +103,10 @@ class AreaxApp extends StatelessWidget {
           secondary: kSecondaryColor,
           error: kErrorColor,
           background: kBackgroundColor,
-          surface: Colors.white, 
+          surface: Colors.white,
         ),
         useMaterial3: true,
-        scaffoldBackgroundColor: kBackgroundColor, 
+        scaffoldBackgroundColor: kBackgroundColor,
         appBarTheme: const AppBarTheme(
           backgroundColor: kPrimaryColor,
           foregroundColor: Colors.white,
@@ -48,7 +119,7 @@ class AreaxApp extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            foregroundColor: Colors.white, 
+            foregroundColor: Colors.white,
           ),
         ),
         inputDecorationTheme: InputDecorationTheme(
@@ -62,13 +133,150 @@ class AreaxApp extends StatelessWidget {
           contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 10),
         ),
       ),
-      home: const BottomBarNavigator(),
+      home: ListenableBuilder(
+        listenable: _authService,
+        builder: (context, child) {
+          if (_authService.isLoading) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
+          if (_authService.isAuthenticated) {
+            return BottomBarNavigator(authService: _authService);
+          } else {
+            return AuthScreen(authService: _authService);
+          }
+        },
+      ),
+    );
+  }
+}
+
+class AuthScreen extends StatefulWidget {
+  final AuthService authService;
+  const AuthScreen({super.key, required this.authService});
+
+  @override
+  State<AuthScreen> createState() => _AuthScreenState();
+}
+
+class _AuthScreenState extends State<AuthScreen> {
+  final TextEditingController _userController = TextEditingController();
+  final TextEditingController _keyController = TextEditingController();
+  bool _isLoading = false;
+  String? _errorMessage;
+
+  Future<void> _handleLogin() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    final success = await widget.authService.login(
+      _userController.text.trim(),
+      _keyController.text.trim(),
+    );
+
+    setState(() {
+      _isLoading = false;
+    });
+
+    if (!success) {
+      setState(() {
+        _errorMessage = 'Login failed. Please check your credentials.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('AreaX Login'),
+      ),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Icon(
+                Icons.security_rounded,
+                size: 80,
+                color: kPrimaryColor,
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Sign in to start mapping areas.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey.shade700,
+                ),
+              ),
+              const SizedBox(height: 32),
+
+              TextField(
+                controller: _userController,
+                decoration: const InputDecoration(
+                  labelText: 'Username',
+                  hintText: 'e.g., sapan',
+                  prefixIcon: Icon(Icons.person_rounded),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              TextField(
+                controller: _keyController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Access Key',
+                  hintText: 'wfnq1324238ycr34t89eq',
+                  prefixIcon: Icon(Icons.vpn_key_rounded),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              if (_errorMessage != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16.0),
+                  child: Text(
+                    _errorMessage!,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: kErrorColor, fontWeight: FontWeight.bold),
+                  ),
+                ),
+
+              FilledButton.icon(
+                onPressed: _isLoading ? null : _handleLogin,
+                icon: _isLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Icon(Icons.lock_open_rounded),
+                label: Text(_isLoading ? 'Authenticating...' : 'Login'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(50),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
 
 class BottomBarNavigator extends StatefulWidget {
-  const BottomBarNavigator({super.key});
+  final AuthService authService;
+  const BottomBarNavigator({super.key, required this.authService});
 
   @override
   State<BottomBarNavigator> createState() => _BottomBarNavigatorState();
@@ -77,9 +285,10 @@ class BottomBarNavigator extends StatefulWidget {
 class _BottomBarNavigatorState extends State<BottomBarNavigator> {
   int _selectedIndex = 0;
 
-  static const List<Widget> _widgetOptions = <Widget>[
-    MapScreen(),
-    AreaListScreen(),
+  late final List<Widget> _widgetOptions = <Widget>[
+    const MapScreen(),
+    const AreaListScreen(),
+    AccountScreen(authService: widget.authService), 
   ];
 
   void _onItemTapped(int index) {
@@ -94,7 +303,7 @@ class _BottomBarNavigatorState extends State<BottomBarNavigator> {
       body: _widgetOptions.elementAt(_selectedIndex),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface, 
+          color: Theme.of(context).colorScheme.surface,
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.15),
@@ -105,7 +314,7 @@ class _BottomBarNavigatorState extends State<BottomBarNavigator> {
         ),
         child: ClipRRect(
           borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(24.0), 
+            topLeft: Radius.circular(24.0),
             topRight: Radius.circular(24.0),
           ),
           child: BottomNavigationBar(
@@ -117,6 +326,10 @@ class _BottomBarNavigatorState extends State<BottomBarNavigator> {
               BottomNavigationBarItem(
                 icon: Icon(Icons.list_alt_rounded),
                 label: 'Area List',
+              ),
+              BottomNavigationBarItem( 
+                icon: Icon(Icons.account_circle_rounded),
+                label: 'Account',
               ),
             ],
             currentIndex: _selectedIndex,
@@ -131,6 +344,144 @@ class _BottomBarNavigatorState extends State<BottomBarNavigator> {
     );
   }
 }
+
+class AccountScreen extends StatelessWidget {
+  final AuthService authService;
+  const AccountScreen({super.key, required this.authService});
+
+  void _showLogoutConfirmation(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirm Logout'),
+        content: const Text('Are you sure you want to log out?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text('Cancel', style: TextStyle(color: Colors.grey.shade700)),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              authService.logout();
+            },
+            style: FilledButton.styleFrom(backgroundColor: kErrorColor),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Account'),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Card(
+              elevation: 4,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.person_rounded, size: 40, color: theme.colorScheme.primary),
+                        const SizedBox(width: 12),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              authService.userName ?? 'User Not Set',
+                              style: theme.textTheme.headlineSmall!.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            Text(
+                              'Status: Logged In',
+                              style: TextStyle(color: Colors.green.shade600, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const Divider(height: 30),
+                    ListTile(
+                      leading: Icon(Icons.vpn_key_rounded, color: theme.colorScheme.primary),
+                      title: const Text('Auth Token'),
+                      subtitle: Text(
+                        authService.authToken ?? 'No token found',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.copy_rounded, size: 20),
+                        color: theme.colorScheme.primary,
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: authService.authToken ?? ''));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Token copied!')),
+                          );
+                        },
+                      ),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            
+            ListTile(
+              leading: Icon(Icons.switch_account_rounded, color: theme.colorScheme.primary),
+              title: const Text('Change Account'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () {
+                 authService.logout();
+              },
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+                side: BorderSide(color: Colors.grey.shade300),
+              ),
+              tileColor: Colors.white,
+            ),
+            const SizedBox(height: 12),
+
+            ListTile(
+              leading: const Icon(Icons.logout_rounded, color: kErrorColor),
+              title: const Text('Logout'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => _showLogoutConfirmation(context),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+                side: BorderSide(color: Colors.grey.shade300),
+              ),
+              tileColor: Colors.white,
+            ),
+
+            const Spacer(),
+            Center(
+              child: Text(
+                'Areax App v1.0.0',
+                style: TextStyle(color: Colors.grey.shade500),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 
 class AreaListScreen extends StatefulWidget {
   const AreaListScreen({super.key});
@@ -242,7 +593,7 @@ class _AreaListScreenState extends State<AreaListScreen> {
               itemCount: snapshot.data!.length,
               itemBuilder: (context, index) {
                 final item = snapshot.data![index];
-                final String docId = item['_id'] ?? 'N/A'; 
+                final String docId = item['_id'] ?? 'N/A';
                 final Map<String, dynamic> entities = item['entities'] ?? {};
                 final String claimStatus = entities['claim_status'] ?? 'N/A';
                 final String pattaHolder = entities['patta_holder'] ?? 'N/A';
@@ -295,14 +646,14 @@ class _AreaListScreenState extends State<AreaListScreen> {
                           ],
                         ),
                         const Divider(height: 16, thickness: 1, color: kBackgroundColor),
-                        
+
                         _DataRow(label: 'Claim Status', value: claimStatus),
                         _DataRow(label: 'Patta Holder', value: pattaHolder),
                         _DataRow(label: 'Document ID (Entity)', value: documentId),
                         _DataRow(label: 'File Name', value: fileName),
-                        
+
                         const SizedBox(height: 16),
-                        
+
                         SizedBox(
                           width: double.infinity,
                           child: FilledButton.icon(
@@ -343,7 +694,7 @@ class _DataRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 140, 
+            width: 140,
             child: Text(
               '$label:',
               style: TextStyle(
@@ -398,7 +749,7 @@ class _MapScreenState extends State<MapScreen> {
         point: latlng,
         child: const Icon(
           Icons.location_pin,
-          color: kErrorColor, 
+          color: kErrorColor,
           size: 40.0,
         ),
       );
@@ -414,7 +765,7 @@ class _MapScreenState extends State<MapScreen> {
       _polygons.add(
         Polygon(
           points: _points,
-          color: kPrimaryColor.withOpacity(0.35), 
+          color: kPrimaryColor.withOpacity(0.35),
           borderColor: kPrimaryColor,
           borderStrokeWidth: 3,
         ),
@@ -565,7 +916,7 @@ class _MapScreenState extends State<MapScreen> {
 
     try {
       final response = await http.post(
-        Uri.parse("$kApiUrl/update_coordinates"), 
+        Uri.parse("$kApiUrl/update_coordinates"),
         headers: {"Content-Type": "application/json"},
         body: body,
       );
@@ -624,7 +975,7 @@ class _MapScreenState extends State<MapScreen> {
             right: 16,
             child: Card(
               elevation: 12.0,
-              color: Theme.of(context).colorScheme.surface, 
+              color: Theme.of(context).colorScheme.surface,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
               ),
@@ -672,7 +1023,7 @@ class _MapScreenState extends State<MapScreen> {
                             icon: const Icon(Icons.my_location_rounded),
                             label: const Text('Locate'),
                             style: FilledButton.styleFrom(
-                              backgroundColor: kPrimaryColor, 
+                              backgroundColor: kPrimaryColor,
                             ),
                           ),
                         ),
@@ -688,7 +1039,7 @@ class _MapScreenState extends State<MapScreen> {
                             icon: const Icon(Icons.code_rounded),
                             label: const Text('JSON'),
                             style: FilledButton.styleFrom(
-                                backgroundColor: kPrimaryColor, 
+                                backgroundColor: kPrimaryColor,
                                 foregroundColor: Colors.white),
                           ),
                         ),
@@ -714,7 +1065,7 @@ class _MapScreenState extends State<MapScreen> {
                         icon: const Icon(Icons.delete_sweep_rounded),
                         label: const Text('Clear All Points'),
                         style: FilledButton.styleFrom(
-                          backgroundColor: kErrorColor, 
+                          backgroundColor: kErrorColor,
                           foregroundColor: Colors.white,
                         ),
                       ),
