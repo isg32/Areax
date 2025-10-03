@@ -222,7 +222,7 @@ class _AuthScreenState extends State<AuthScreen> {
                 controller: _userController,
                 decoration: const InputDecoration(
                   labelText: 'Username',
-                  hintText: 'e.g., sapan',
+                  hintText: 'Enter Your Username Here',
                   prefixIcon: Icon(Icons.person_rounded),
                 ),
               ),
@@ -233,7 +233,7 @@ class _AuthScreenState extends State<AuthScreen> {
                 obscureText: true,
                 decoration: const InputDecoration(
                   labelText: 'Access Key',
-                  hintText: 'wfnq1324238ycr34t89eq',
+                  hintText: 'Enter Your Authentication Key Here',
                   prefixIcon: Icon(Icons.vpn_key_rounded),
                 ),
               ),
@@ -471,7 +471,7 @@ class AccountScreen extends StatelessWidget {
             const Spacer(),
             Center(
               child: Text(
-                'Areax App v1.0.0',
+                'Areax - By isg32❤️',
                 style: TextStyle(color: Colors.grey.shade500),
               ),
             ),
