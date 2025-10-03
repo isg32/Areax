@@ -415,47 +415,20 @@ class AccountScreen extends StatelessWidget {
                         ),
                       ],
                     ),
-                    const Divider(height: 30),
+                    const Divider(height: 30),            
                     ListTile(
-                      leading: Icon(Icons.vpn_key_rounded, color: theme.colorScheme.primary),
-                      title: const Text('Auth Token'),
-                      subtitle: Text(
-                        authService.authToken ?? 'No token found',
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.copy_rounded, size: 20),
-                        color: theme.colorScheme.primary,
-                        onPressed: () {
-                          Clipboard.setData(ClipboardData(text: authService.authToken ?? ''));
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Token copied!')),
-                          );
-                        },
-                      ),
-                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.switch_account_rounded, color: theme.colorScheme.primary),
+                      title: const Text('Change Account'),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () {
+                        authService.logout();
+                      },
                     ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 24),
-            
-            ListTile(
-              leading: Icon(Icons.switch_account_rounded, color: theme.colorScheme.primary),
-              title: const Text('Change Account'),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () {
-                 authService.logout();
-              },
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-                side: BorderSide(color: Colors.grey.shade300),
-              ),
-              tileColor: Colors.white,
-            ),
             const SizedBox(height: 12),
-
             ListTile(
               leading: const Icon(Icons.logout_rounded, color: kErrorColor),
               title: const Text('Logout'),
@@ -471,7 +444,7 @@ class AccountScreen extends StatelessWidget {
             const Spacer(),
             Center(
               child: Text(
-                'Areax - By isg32❤️',
+                'Areax - By isg32 ❤️',
                 style: TextStyle(color: Colors.grey.shade500),
               ),
             ),
@@ -534,7 +507,7 @@ class _AreaListScreenState extends State<AreaListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Areas to be Mapped'),
+        title: const Text('Area List'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
